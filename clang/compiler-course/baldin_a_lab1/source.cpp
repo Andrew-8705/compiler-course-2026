@@ -4,26 +4,25 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "llvm/Support/raw_ostream.h"
+#include <unordered_map>
 
 using namespace clang;
 
 namespace {
 
-class MutationFinder : public RecursiveASTVisitor<MutationFinder> {
-public:
-  explicit MutationFinder(const VarDecl *Target) 
-      : m_target(Target), m_isPointerMutated(false), m_isDataMutated(false) {}
+// Состояние переменной
+struct VarStatus {
+  bool pointerMutated = false;
+  bool dataMutated = false;
+};
 
-  void Analyze(Stmt *Body) {
-    if (!Body) return;
-    m_isPointerMutated = false;
-    m_isDataMutated = false;
-    TraverseStmt(Body); 
+class MutationCollector : public RecursiveASTVisitor<MutationCollector> {
+public:
+  const std::unordered_map<const VarDecl*, VarStatus>& getMap() {
+    return m_statusMap;
   }
 
-  bool isPointerMutated() const { return m_isPointerMutated; }
-  bool isDataMutated() const { return m_isDataMutated; }
-
+  // Ловим присваивания: = , += , -= и тд
   bool VisitBinaryOperator(BinaryOperator *BO) {
     if (BO->isAssignmentOp()) {
       checkExpression(BO->getLHS(), false);
@@ -31,6 +30,7 @@ public:
     return true;
   }
 
+  // Ловим инкременты/декременты: ++ , --
   bool VisitUnaryOperator(UnaryOperator *UO) {
     if (UO->isIncrementDecrementOp()) {
       checkExpression(UO->getSubExpr(), false);
@@ -39,22 +39,23 @@ public:
   }
 
 private:
-  const VarDecl *m_target;
-  bool m_isPointerMutated;
-  bool m_isDataMutated;
+  std::unordered_map<const VarDecl*, VarStatus> m_statusMap; 
 
+  // Анализирует выражение слева от `=` или внутри `++`
   void checkExpression(Expr *E, bool isDeref) {
     if (!E) return;
     E = E->IgnoreParenCasts();
 
+    // Базовый случай: дошли до самой переменной
     if (auto *DRE = dyn_cast<DeclRefExpr>(E)) {
-      if (DRE->getDecl() == m_target) {
-        if (isDeref) m_isDataMutated = true;
-        else m_isPointerMutated = true;
+      if (auto *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
+        if (isDeref) m_statusMap[VD].dataMutated = true;
+        else m_statusMap[VD].pointerMutated = true;
       }
       return;
     }
 
+    // Разыменование: *p
     if (auto *UO = dyn_cast<UnaryOperator>(E)) {
       if (UO->getOpcode() == UO_Deref) {
         checkExpression(UO->getSubExpr(), true);
@@ -62,11 +63,13 @@ private:
       return;
     }
 
+    // Доступ по индексу массива: p[i]
     if (auto *ASE = dyn_cast<ArraySubscriptExpr>(E)) {
         checkExpression(ASE->getBase(), true);
         return;
     }
 
+    // Адресная арифметика: *(p + 1) или *(1 + p)
     if (auto *BO = dyn_cast<BinaryOperator>(E)) {
         checkExpression(BO->getLHS(), isDeref);
         checkExpression(BO->getRHS(), isDeref);
@@ -77,31 +80,36 @@ private:
 
 class ConstFixVisitor final : public RecursiveASTVisitor<ConstFixVisitor> {
 public:
-  explicit ConstFixVisitor(ASTContext *context, Rewriter &R) 
-      : m_context(context), m_rewriter(R) {}
+  explicit ConstFixVisitor(ASTContext *context, Rewriter &R, 
+    const std::unordered_map<const VarDecl*, VarStatus> &map)
+      : m_context(context), m_rewriter(R), m_statusMap(map) {}
 
-  bool VisitVarDecl(VarDecl *v) {
+  bool VisitVarDecl(VarDecl* v) {
     QualType qt = v->getType();
+    if (qt.isNull()) return true;
 
     bool isPtr = qt->isPointerType();
     bool isRef = qt->isReferenceType();
-
     if (!isPtr && !isRef) return true;
 
     auto *func = dyn_cast<FunctionDecl>(v->getDeclContext());
     if (!func || !func->hasBody()) return true;
 
-    MutationFinder finder(v);
-    finder.Analyze(func->getBody());
+    VarStatus status; 
 
-    bool ptrMutated = finder.isPointerMutated();
-    bool dataMutated = finder.isDataMutated();
+    auto it = m_statusMap.find(v);
+    if (it != m_statusMap.end()) {
+        status = it->second;
+    }
+
+    bool ptrMutated = status.pointerMutated;
+    bool dataMutated = status.dataMutated;
 
     bool dataIsConst = qt->getPointeeType().isConstQualified();
     bool ptrIsConst = qt.isLocalConstQualified(); 
 
     if (isRef) {
-        if (!dataMutated && !qt.getNonReferenceType().isConstQualified()) {
+        if (!dataMutated && !ptrMutated && !qt.getNonReferenceType().isConstQualified()) {
             m_rewriter.InsertText(v->getBeginLoc(), "const ");
         }
     } 
@@ -124,6 +132,7 @@ public:
 private:
   ASTContext *m_context;
   Rewriter &m_rewriter;
+  const std::unordered_map<const VarDecl*, VarStatus> &m_statusMap;
 };
 
 class ConstFixConsumer final : public ASTConsumer {
@@ -131,14 +140,18 @@ public:
   explicit ConstFixConsumer(CompilerInstance &CI) {}
 
   void HandleTranslationUnit(ASTContext &context) override {
-    
     Rewriter rewriter;
     rewriter.setSourceMgr(context.getSourceManager(), context.getLangOpts());
 
-    ConstFixVisitor visitor(&context, rewriter);
-    
+    // Собираем информацию о переменных
+    MutationCollector collector;
+    collector.TraverseDecl(context.getTranslationUnitDecl());
+
+    // Изменяем код
+    ConstFixVisitor visitor(&context, rewriter, collector.getMap());
     visitor.TraverseDecl(context.getTranslationUnitDecl());
     
+    // Вывод
     FileID mainFileID = context.getSourceManager().getMainFileID();
     const llvm::RewriteBuffer *RewriteBuf = rewriter.getRewriteBufferFor(mainFileID);
 
