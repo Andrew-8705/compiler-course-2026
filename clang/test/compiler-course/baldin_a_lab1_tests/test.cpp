@@ -50,16 +50,63 @@ void test_already_const() {
     int b = *p5;
 }
 
-// CHECK-LABEL: test_arguments
-// CHECK: void test_arguments(const int* const arg1, const int& arg2)
-void test_arguments(int* arg1, int& arg2) {
-    int val = *arg1 + arg2;
-}
-
 // CHECK-LABEL: test_array_mutation
 // CHECK: int* const p6 {{=}}
 void test_array_mutation() {
     int arr[5] = {1, 2, 3, 4, 5};
     int* p6 = arr;
     p6[2] = 10;
+}
+
+// CHECK-LABEL: test_arguments_safe
+// CHECK: void test_arguments_safe(const int* const arg1, const int& arg2{{[)]}}
+void test_arguments_safe(int* arg1, int& arg2) {
+    int val = *arg1 + arg2;
+}
+
+// CHECK-LABEL: test_arg_data_mutated
+// CHECK: void test_arg_data_mutated(int* const arg{{[)]}}
+void test_arg_data_mutated(int* arg) {
+    *arg = 100;
+}
+
+// CHECK-LABEL: test_arg_ptr_mutated
+// CHECK: void test_arg_ptr_mutated(const int* arg{{[)]}}
+void test_arg_ptr_mutated(int* arg) {
+    arg++;
+}
+
+// CHECK-LABEL: test_arg_ref_mutated
+// CHECK: void test_arg_ref_mutated(int& arg{{[)]}}
+// CHECK-NOT: const int{{&}} arg
+void test_arg_ref_mutated(int& arg) {
+    arg = 200;
+}
+
+// CHECK-LABEL: test_5_stars_safe
+// CHECK: const int***** const p {{=}}
+void test_5_stars_safe() {
+    int a = 1;
+    int* p1 = &a; int** p2 = &p1; int*** p3 = &p2; int**** p4 = &p3;
+    int***** p = &p4;
+    int b = *****p;
+}
+
+// CHECK-LABEL: test_5_stars_data_mutated
+// CHECK: int***** const p {{=}}
+// CHECK-NOT: const int{{[*]+}} const p
+void test_5_stars_data_mutated() {
+    int a = 1;
+    int* p1 = &a; int** p2 = &p1; int*** p3 = &p2; int**** p4 = &p3;
+    int***** p = &p4;
+    *****p = 500;
+}
+
+// CHECK-LABEL: test_5_stars_ptr_mutated
+// CHECK: const int***** p {{=}}
+void test_5_stars_ptr_mutated() {
+    int a = 1;
+    int* p1 = &a; int** p2 = &p1; int*** p3 = &p2; int**** p4 = &p3;
+    int***** p = &p4;
+    p++;
 }
