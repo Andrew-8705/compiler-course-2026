@@ -1,9 +1,9 @@
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/IR/IRBuilder.h"
 
 using namespace llvm;
 
@@ -14,24 +14,25 @@ struct IcmpInvertPass : PassInfoMixin<IcmpInvertPass> {
     for (auto &bb : func) {
       for (auto &instr : make_early_inc_range(bb)) {
         if (auto *icmp = dyn_cast<ICmpInst>(&instr)) {
-            if (icmp->isEquality()) {
-                continue;
-            }
+          if (icmp->isEquality()) {
+            continue;
+          }
 
-            ICmpInst::Predicate invPred = icmp->getInversePredicate();
+          ICmpInst::Predicate invPred = icmp->getInversePredicate();
 
-            IRBuilder<> builder(icmp);
+          IRBuilder<> builder(icmp);
 
-            Value *lhs = icmp->getOperand(0);
-            Value *rhs = icmp->getOperand(1);
-            
-            Value *newCmp = builder.CreateICmp(invPred, lhs, rhs, icmp->getName() + ".inv");
-            Value *notCmp = builder.CreateNot(newCmp, icmp->getName() + ".not");
+          Value *lhs = icmp->getOperand(0);
+          Value *rhs = icmp->getOperand(1);
 
-            icmp->replaceAllUsesWith(notCmp);
-            icmp->eraseFromParent();
-          
-            changed = true;
+          Value *newCmp =
+              builder.CreateICmp(invPred, lhs, rhs, icmp->getName() + ".inv");
+          Value *notCmp = builder.CreateNot(newCmp, icmp->getName() + ".not");
+
+          icmp->replaceAllUsesWith(notCmp);
+          icmp->eraseFromParent();
+
+          changed = true;
         }
       }
     }
@@ -41,8 +42,7 @@ struct IcmpInvertPass : PassInfoMixin<IcmpInvertPass> {
 };
 } // namespace
 
-extern "C" LLVM_ATTRIBUTE_WEAK ::PassPluginLibraryInfo
-llvmGetPassPluginInfo() {
+extern "C" LLVM_ATTRIBUTE_WEAK ::PassPluginLibraryInfo llvmGetPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, "IcmpInversePass", "0.1",
           [](PassBuilder &PB) {
             PB.registerPipelineParsingCallback(
