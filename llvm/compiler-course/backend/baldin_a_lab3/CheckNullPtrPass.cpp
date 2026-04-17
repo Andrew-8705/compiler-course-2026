@@ -1,9 +1,9 @@
 #include "X86.h"
 #include "X86InstrInfo.h"
 #include "X86Subtarget.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
 
 using namespace llvm;
 
@@ -39,7 +39,8 @@ bool NullCheckPass::runOnMachineFunction(MachineFunction &func) {
           }
         }
 
-        if (!baseReg) continue;
+        if (!baseReg)
+          continue;
 
         DebugLoc DL = instr.getDebugLoc();
 
@@ -58,5 +59,5 @@ bool NullCheckPass::runOnMachineFunction(MachineFunction &func) {
 }
 } // namespace
 
-static RegisterPass<NullCheckPass> X("null-check-x86", "Insert NULL checks before dereference", false,
-                                   false);
+static RegisterPass<NullCheckPass>
+    X("null-check-x86", "Insert NULL checks before dereference", false, false);
