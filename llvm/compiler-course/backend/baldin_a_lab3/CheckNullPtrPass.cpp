@@ -1,10 +1,10 @@
+#include "MCTargetDesc/X86BaseInfo.h"
 #include "X86.h"
 #include "X86InstrInfo.h"
 #include "X86Subtarget.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "MCTargetDesc/X86BaseInfo.h"
 
 using namespace llvm;
 
@@ -32,11 +32,12 @@ bool NullCheckPass::runOnMachineFunction(MachineFunction &func) {
 
         const MCInstrDesc &desc = instr.getDesc();
         int memOpStart = X86II::getMemoryOperandNo(desc.TSFlags);
-        
+
         if (memOpStart != -1) {
           memOpStart += X86II::getOperandBias(desc);
-          
-          const MachineOperand &baseOp = instr.getOperand(memOpStart + X86::AddrBaseReg);
+
+          const MachineOperand &baseOp =
+              instr.getOperand(memOpStart + X86::AddrBaseReg);
 
           if (baseOp.isReg() && baseOp.getReg().isValid()) {
             Register r = baseOp.getReg();
