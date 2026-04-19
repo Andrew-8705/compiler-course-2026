@@ -133,7 +133,7 @@ body:             |
     ; CHECK-NEXT: CALL64pcrel32 {{.*}}check_null{{.*}}
     ; CHECK-NEXT: %2:gr32 = MOV32rm %1, 1, $noreg, 0, $noreg
 
-    ; CHECK:      $rdi = COPY %2
+    ; CHECK:      $rdi = COPY %0
     ; CHECK-NEXT: CALL64pcrel32 {{.*}}check_null{{.*}}
     ; CHECK-NEXT: %3:gr32 = nsw ADD32rm %2, %0, 1, $noreg, 0, $noreg
 
