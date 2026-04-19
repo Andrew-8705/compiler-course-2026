@@ -4,6 +4,7 @@
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "MCTargetDesc/X86BaseInfo.h"
 
 using namespace llvm;
 
@@ -28,13 +29,19 @@ bool NullCheckPass::runOnMachineFunction(MachineFunction &func) {
 
       if (instr.mayLoad() || instr.mayStore()) {
         Register baseReg = 0;
-        for (unsigned i = 0; i < instr.getNumOperands(); ++i) {
-          MachineOperand &MO = instr.getOperand(i);
 
-          if (MO.isReg() && MO.isUse() && MO.getReg().isValid()) {
-            if (MO.getReg() != X86::RSP && MO.getReg() != X86::RBP) {
-              baseReg = MO.getReg();
-              break;
+        const MCInstrDesc &desc = instr.getDesc();
+        int memOpStart = X86II::getMemoryOperandNo(desc.TSFlags);
+        
+        if (memOpStart != -1) {
+          memOpStart += X86II::getOperandBias(desc);
+          
+          const MachineOperand &baseOp = instr.getOperand(memOpStart + X86::AddrBaseReg);
+
+          if (baseOp.isReg() && baseOp.getReg().isValid()) {
+            Register r = baseOp.getReg();
+            if (r != X86::RSP && r != X86::RBP) {
+              baseReg = r;
             }
           }
         }
