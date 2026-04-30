@@ -50,6 +50,7 @@ func.func @test_negative_bounds() {
   return
 }
 
+// CHECK-LABEL: func.func @test_nested_loops
 func.func @test_nested_loops() {
   // CHECK: affine.for %{{.*}} = 0 to 4 {
   // CHECK:   affine.for %{{.*}} = 0 to 2 {
