@@ -1,6 +1,6 @@
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/Plugins/PassPlugin.h"
@@ -9,10 +9,13 @@
 using namespace mlir;
 
 namespace {
-class AffineTripCountPass : public PassWrapper<AffineTripCountPass, OperationPass<ModuleOp>> {
+class AffineTripCountPass
+    : public PassWrapper<AffineTripCountPass, OperationPass<ModuleOp>> {
 public:
   StringRef getArgument() const final { return "affine-trip-count"; }
-  StringRef getDescription() const final { return "Annotates affine.for with trip_count attribute"; }
+  StringRef getDescription() const final {
+    return "Annotates affine.for with trip_count attribute";
+  }
 
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
